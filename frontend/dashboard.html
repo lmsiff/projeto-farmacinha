@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Relatórios | Farmácia Comunitária</title>
+  <link rel="stylesheet" href="./assets/styles/dashboard.css">
+</head>
+
+<body>
+  <aside class="sidebar">
+    <h1>Farmácia</h1>
+    <nav class="menu">
+      <a class="active" data-section="dashboard">Relatórios</a>
+      <a data-section="pacientes">Pacientes</a>
+      <a data-section="receitas">Receitas</a>
+      <a data-section="medicamentos">Medicamentos</a>
+      <a data-section="voluntarios" id="menuVoluntarios" style="display:none">Voluntários</a>
+      <a data-section="filas">Fila</a>
+    </nav>
+    <div style="margin-top:auto;padding-top:24px">
+      <button id="btnLogout" class="btn-voltar" style="width:100%;cursor:pointer;border:none;text-align:center">Sair</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h2 id="title">Relatórios</h2>
+      <div class="user" id="userLabel">Carregando...</div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <section id="dashboard" class="page">
+      <div class="cards">
+        <div class="card"><h3>Receitas Totais</h3><strong id="totalReceitas">—</strong></div>
+        <div class="card"><h3>Pacientes Totais</h3><strong id="totalPacientes">—</strong></div>
+        <div class="card"><h3>Medicamentos Totais</h3><strong id="totalMedicamentos">—</strong></div>
+        <div class="card"><h3>Voluntários Totais</h3><strong id="totalVoluntarios">—</strong></div>
+      </div>
+      <div class="cards">
+        <div class="card">
+          <h3>Receitas por Mês</h3>
+          <p style="color:var(--muted);font-size:0.85rem;margin-bottom:16px">Emissões nos últimos 6 meses</p>
+          <div class="bar-chart-wrap">
+            <svg id="barChartSvg" class="bar-chart-svg" viewBox="0 0 300 140" preserveAspectRatio="none"></svg>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Medicamentos mais distribuídos</h3>
+          <p style="color:var(--muted);font-size:0.85rem;margin-bottom:16px">Ranking dos mais utilizados</p>
+          <div class="dash-rank-list" id="rankList">
+            <p style="color:var(--muted);font-size:0.85rem">Carregando...</p>
+          </div>
+        </div>
+      </div>
+      <div class="cards">
+        <div class="card">
+          <h3>Pacientes por Faixa Etária</h3>
+          <p style="color:var(--muted);font-size:0.85rem;margin-bottom:16px">Distribuição por idade</p>
+          <div class="pizza-chart-wrap">
+            <svg viewBox="0 0 200 200" class="pizza-svg" id="pizzaSvg"></svg>
+            <div class="pizza-legend" id="pizzaLegend"></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Alertas Importantes</h3>
+          <p style="color:var(--muted);font-size:0.85rem;margin-bottom:16px">Atenção requerida</p>
+          <div class="dash-alert-list" id="alertasList">
+            <p style="color:var(--muted);font-size:0.85rem">Carregando...</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MODAL DELETE -->
+    <div class="modal-overlay" id="deleteModal">
+      <div class="modal-box">
+        <h3>Confirmar Exclusão</h3>
+        <p id="deleteModalText">Tem certeza que deseja excluir? Esta ação não pode ser desfeita.</p>
+        <div class="modal-actions">
+          <button class="btn-cancel" id="btnCancelDelete">Cancelar</button>
+          <button class="btn-confirm-delete" id="btnConfirmDelete">Sim, excluir</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PACIENTES -->
+    <section id="pacientes" class="page" style="display:none">
+      <div class="card" style="margin-bottom:24px">
+        <h3 id="formTitle">Cadastrar Paciente</h3><br>
+        <div class="edit-banner" id="editBanner">✏️ Editando dados do paciente</div>
+        <form id="pacienteForm">
+          <div class="form-grid">
+            <div class="form-group"><label>Nome completo</label><input id="pNome" placeholder="Ex: Maria da Silva"></div>
+            <div class="form-group"><label>CPF</label><input id="pCpf" placeholder="000.000.000-00"></div>
+            <div class="form-group"><label>Telefone</label><input id="pTel" placeholder="(00) 00000-0000"></div>
+            <div class="form-group"><label>Data de nascimento</label><input id="pNasc" type="date"></div>
+            <div class="form-group" style="grid-column:1/-1"><label>Endereço</label><input id="pEnd" placeholder="Rua, número, bairro, cidade - UF"></div>
+          </div>
+          <button type="button" class="btn-login" id="formBtn" style="width:100%;margin-top:16px">Salvar Paciente</button>
+        </form>
+      </div>
+      <div class="table-box">
+        <h3>Pacientes Cadastrados</h3>
+        <table>
+          <thead><tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>Data de Nascimento</th><th>Endereço</th><th>Ações</th></tr></thead>
+          <tbody id="pacientesBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="receitas" class="page" style="display:none">
+      <div class="card" style="margin-bottom:24px">
+        <h3 id="receitaFormTitle">Cadastrar Receita</h3><br>
+        <div class="edit-banner" id="receitaEditBanner">✏️ Editando receita</div>
+        <form id="receitaForm">
+          <div class="form-grid" style="margin-bottom:16px">
+            <div class="form-group"><label>Data</label><input id="rData" type="date" required></div>
+            <div class="form-group"><label>Médico Responsável</label><input id="rMedico" placeholder="Dr. João Souza" required></div>
+            <div class="form-group">
+              <label>Paciente</label>
+              <select id="rPaciente" required><option value="">Selecione o paciente</option></select>
+            </div>
+            <div class="form-group">
+              <label>Voluntário Responsável</label>
+              <select id="rVol" required><option value="">Selecione o voluntário</option></select>
+            </div>
+          </div>
+          <span class="med-section-label">💊 Medicamentos da Receita</span>
+          <div class="med-list" id="medList"></div>
+          <button type="button" class="btn-add-med" id="btnAdicionarMed">+ Adicionar Medicamento</button>
+          <div class="form-grid" style="margin-top:12px">
+            <button type="button" class="btn-login" id="receitaFormBtn">Salvar Receita</button>
+          </div>
+        </form>
+      </div>
+      <div class="table-box">
+        <h3>Receitas Cadastradas</h3>
+        <table>
+          <thead><tr><th>Data</th><th>Médico</th><th>Paciente</th><th>Medicamentos</th><th>Voluntário</th><th>Ações</th></tr></thead>
+          <tbody id="receitasBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="medicamentos" class="page" style="display:none">
+      <div class="card" style="margin-bottom:24px">
+        <h3 id="medFormTitle">Cadastrar Medicamento</h3><br>
+        <div class="edit-banner" id="medEditBanner">✏️ Editando medicamento</div>
+        <form id="medForm">
+          <div class="form-grid">
+            <div class="form-group"><label>Nome Comercial</label><input id="mNome" placeholder="Ex: Tylenol"></div>
+            <div class="form-group"><label>Princípio Ativo</label><input id="mAtivo" placeholder="Ex: Paracetamol"></div>
+            <div class="form-group"><label>Dosagem</label><input id="mDose" placeholder="Ex: 500mg"></div>
+            <div class="form-group"><label>Laboratório</label><input id="mLab" placeholder="Ex: EMS"></div>
+            <div class="form-group"><label>Lote</label><input id="mLote" placeholder="Ex: L2026A"></div>
+            <div class="form-group"><label>Data de Validade</label><input id="mVal" type="date"></div>
+            <div class="form-group"><label>Quantidade</label><input id="mQtd" type="number" min="0"></div>
+          </div>
+          <button type="button" class="btn-login" id="medFormBtn" style="width:100%;margin-top:16px">Salvar Medicamento</button>
+        </form>
+      </div>
+      <div class="table-box">
+        <h3>Medicamentos Cadastrados</h3>
+        <table>
+          <thead><tr><th>Nome Comercial</th><th>Princípio Ativo</th><th>Dosagem</th><th>Laboratório</th><th>Lote</th><th>Validade</th><th>Estoque</th><th>Ações</th></tr></thead>
+          <tbody id="medBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="voluntarios" class="page" style="display:none">
+      <div class="card" style="margin-bottom:24px">
+        <h3 id="volFormTitle">Cadastrar Voluntário</h3><br>
+        <div class="edit-banner" id="volEditBanner">✏️ Editando voluntário</div>
+        <form id="volForm">
+          <div class="form-grid">
+            <div class="form-group"><label>Nome</label><input id="vNome"></div>
+            <div class="form-group"><label>Senha</label><input id="vSenha" type="password"></div>
+            <div class="form-group"><label>CPF</label><input id="vCpf"></div>
+            <div class="form-group"><label>Número de Telefone</label><input id="vTel"></div>
+            <div class="form-group"><label>Data de Nascimento</label><input id="vNasc" type="date"></div>
+          </div>
+          <button type="button" class="btn-login" id="volFormBtn" style="width:100%;margin-top:16px">Salvar Voluntário</button>
+        </form>
+      </div>
+      <div class="table-box">
+        <h3>Voluntários Cadastrados</h3>
+        <table>
+          <thead><tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>Data de Nascimento</th><th>Ações</th></tr></thead>
+          <tbody id="volBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="filas" class="page" style="display:none">
+      <div class="fila-container" id="filaContainer"></div>
+    </section>
+    
+    <div class="modal-overlay" id="filaModal">
+      <div class="modal-box" style="max-width:460px;text-align:left">
+        <h3 id="filaModalTitulo" style="margin-bottom:4px"></h3>
+        <p id="filaModalReceita" style="margin-bottom:20px;font-size:0.85rem"></p>
+        <div id="filaModalMeds" style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px"></div>
+        <button class="btn-cancel" id="filaModalFechar" style="width:100%">Fechar</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="./assets/js/script.js"></script>
+</body>
+</html>

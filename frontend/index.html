@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login | Farmácia Comunitária</title>
+  <link rel="stylesheet" href="./assets/styles/index.css" />
+</head>
+
+<body>
+  <div class="login-wrapper">
+    <aside class="login-aside">
+      <h1>Farmácia Comunitária</h1>
+      <p>Cuidando da saúde da comunidade com tecnologia, organização e atendimento humanizado.</p>
+    </aside>
+
+    <section class="login-content">
+      <h2>Acesso ao sistema</h2>
+      <span>Informe suas credenciais para continuar</span>
+
+      <div class="error-msg" id="errorMsg">Usuário ou senha incorretos.</div>
+
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="nome">Nome de usuário</label>
+          <input type="text" id="nome" placeholder="Ex: admin" required autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label for="password">Senha</label>
+          <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password" />
+        </div>
+        <button type="submit" class="btn-login" id="btnLogin">Entrar</button>
+      </form>
+    </section>
+  </div>
+
+  <script>
+    const API = 'http://localhost:3000/api';
+
+    if (localStorage.getItem('token')) {
+      window.location.href = './dashboard.html';
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('btnLogin');
+      const errorMsg = document.getElementById('errorMsg');
+      const nome = document.getElementById('nome').value.trim();
+      const senha = document.getElementById('password').value;
+
+      btn.disabled = true;
+      btn.textContent = 'Entrando...';
+      errorMsg.classList.remove('show');
+
+      try {
+        const res = await fetch(`${API}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome, senha }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          errorMsg.textContent = data.error || 'Usuário ou senha incorretos.';
+          errorMsg.classList.add('show');
+          return;
+        }
+
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        window.location.href = './dashboard.html';
+
+      } catch (err) {
+        errorMsg.textContent = 'Erro de conexão com o servidor.';
+        errorMsg.classList.add('show');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Entrar';
+      }
+    });
+  </script>
+</body>
+</html>
