@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Voluntario {
+  id           Int       @id @default(autoincrement())
+  nome         String
+  senha        String
+  cpf          String    @unique
+  telefone     String
+  dataNasc     DateTime
+  isAdmin      Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  receitas     Receita[] @relation("VoluntarioReceita")
+
+  @@map("voluntarios")
+}
+
+model Paciente {
+  id           Int       @id @default(autoincrement())
+  nome         String
+  cpf          String    @unique
+  telefone     String
+  dataNasc     DateTime
+  endereco     String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  receitas     Receita[]
+
+  @@map("pacientes")
+}
+
+model Medicamento {
+  id           Int       @id @default(autoincrement())
+  nomeComercial String
+  principioAtivo String
+  dosagem      String
+  laboratorio  String
+  lote         String
+  validade     DateTime
+  quantidade   Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  receitaItems ReceitaItem[]
+
+  @@map("medicamentos")
+}
+
+model Receita {
+  id           Int       @id @default(autoincrement())
+  data         DateTime
+  medico       String
+  pacienteId   Int
+  voluntarioId Int
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  paciente     Paciente   @relation(fields: [pacienteId], references: [id])
+  voluntario   Voluntario @relation("VoluntarioReceita", fields: [voluntarioId], references: [id])
+  itens        ReceitaItem[]
+  fila         Fila?
+
+  @@map("receitas")
+}
+
+model ReceitaItem {
+  id            Int         @id @default(autoincrement())
+  receitaId     Int
+  medicamentoId Int
+  quantidade    Int
+
+  receita       Receita     @relation(fields: [receitaId], references: [id], onDelete: Cascade)
+  medicamento   Medicamento @relation(fields: [medicamentoId], references: [id])
+
+  @@map("receita_itens")
+}
+
+model Fila {
+  id           Int       @id @default(autoincrement())
+  receitaId    Int       @unique
+  posicao      Int
+  entregue     Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  receita      Receita   @relation(fields: [receitaId], references: [id])
+
+  @@map("fila")
+}
