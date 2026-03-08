@@ -70,7 +70,14 @@ export class ReceitaRepository {
     });
   }
 
-  delete(id: number) {
-    return prisma.receita.delete({ where: { id } });
+  async delete(id: number) {
+    return prisma.$transaction(async (tx) => {
+      // Remove entrada da fila (se existir)
+      await tx.fila.deleteMany({ where: { receitaId: id } });
+      // Remove os itens da receita
+      await tx.receitaItem.deleteMany({ where: { receitaId: id } });
+      // Remove a receita
+      return tx.receita.delete({ where: { id } });
+    });
   }
 }

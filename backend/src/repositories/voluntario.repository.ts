@@ -31,7 +31,26 @@ export class VoluntarioRepository {
     });
   }
 
-  delete(id: number) {
-    return prisma.voluntario.delete({ where: { id } });
+  async delete(id: number) {
+    return prisma.$transaction(async (tx) => {
+      // Busca todas as receitas do voluntário
+      const receitas = await tx.receita.findMany({
+        where: { voluntarioId: id },
+        select: { id: true },
+      });
+      const receitaIds = receitas.map((r) => r.id);
+
+      if (receitaIds.length > 0) {
+        // Remove entradas da fila vinculadas às receitas
+        await tx.fila.deleteMany({ where: { receitaId: { in: receitaIds } } });
+        // Remove itens das receitas
+        await tx.receitaItem.deleteMany({ where: { receitaId: { in: receitaIds } } });
+        // Remove as receitas
+        await tx.receita.deleteMany({ where: { id: { in: receitaIds } } });
+      }
+
+      // Remove o voluntário
+      return tx.voluntario.delete({ where: { id } });
+    });
   }
 }

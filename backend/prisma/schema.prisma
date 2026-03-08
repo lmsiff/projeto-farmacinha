@@ -64,8 +64,8 @@ model Receita {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  paciente     Paciente   @relation(fields: [pacienteId], references: [id])
-  voluntario   Voluntario @relation("VoluntarioReceita", fields: [voluntarioId], references: [id])
+  paciente     Paciente   @relation(fields: [pacienteId], references: [id], onDelete: Cascade)
+  voluntario   Voluntario @relation("VoluntarioReceita", fields: [voluntarioId], references: [id], onDelete: Cascade)
   itens        ReceitaItem[]
   fila         Fila?
 
@@ -79,7 +79,7 @@ model ReceitaItem {
   quantidade    Int
 
   receita       Receita     @relation(fields: [receitaId], references: [id], onDelete: Cascade)
-  medicamento   Medicamento @relation(fields: [medicamentoId], references: [id])
+  medicamento   Medicamento @relation(fields: [medicamentoId], references: [id], onDelete: Cascade)
 
   @@map("receita_itens")
 }
@@ -92,7 +92,7 @@ model Fila {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  receita      Receita   @relation(fields: [receitaId], references: [id])
+  receita      Receita   @relation(fields: [receitaId], references: [id], onDelete: Cascade)
 
   @@map("fila")
 }

@@ -33,7 +33,39 @@ export class MedicamentoRepository {
     return prisma.medicamento.update({ where: { id }, data });
   }
 
-  delete(id: number) {
-    return prisma.medicamento.delete({ where: { id } });
+  async delete(id: number) {
+    return prisma.$transaction(async (tx) => {
+      // Busca os ReceitaItens que usam este medicamento
+      const itensAfetados = await tx.receitaItem.findMany({
+        where: { medicamentoId: id },
+        select: { receitaId: true },
+      });
+      const receitaIds = [...new Set(itensAfetados.map((i) => i.receitaId))];
+
+      // Remove os itens que referenciam este medicamento
+      await tx.receitaItem.deleteMany({ where: { medicamentoId: id } });
+
+      if (receitaIds.length > 0) {
+        // Verifica quais receitas ficaram sem nenhum item
+        const receitasVazias = await tx.receita.findMany({
+          where: {
+            id: { in: receitaIds },
+            itens: { none: {} },
+          },
+          select: { id: true },
+        });
+        const receitasVaziasIds = receitasVazias.map((r) => r.id);
+
+        if (receitasVaziasIds.length > 0) {
+          // Remove entradas da fila das receitas vazias
+          await tx.fila.deleteMany({ where: { receitaId: { in: receitasVaziasIds } } });
+          // Remove as receitas que ficaram sem itens
+          await tx.receita.deleteMany({ where: { id: { in: receitasVaziasIds } } });
+        }
+      }
+
+      // Remove o medicamento
+      return tx.medicamento.delete({ where: { id } });
+    });
   }
 }
