@@ -27,7 +27,10 @@
   <main class="main">
     <div class="topbar">
       <h2 id="title">Relatórios</h2>
-      <div class="user" id="userLabel">Carregando...</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <button id="btnGerarRelatorio" class="btn-gerar-relatorio">📄 Gerar Relatório PDF</button>
+        <div class="user" id="userLabel">Carregando...</div>
+      </div>
     </div>
 
     <!-- DASHBOARD -->
@@ -102,7 +105,16 @@
         </form>
       </div>
       <div class="table-box">
-        <h3>Pacientes Cadastrados</h3>
+        <div class="filter-bar">
+          <h3>Pacientes Cadastrados</h3>
+          <div class="filter-fields">
+            <div class="filter-group"><label>Nome</label><input id="fPacNome" placeholder="Buscar por nome…"></div>
+            <div class="filter-group"><label>CPF</label><input id="fPacCpf" placeholder="000.000.000-00"></div>
+            <div class="filter-group"><label>Endereço</label><input id="fPacEnd" placeholder="Bairro, cidade…"></div>
+            <button class="btn-filter-clear" id="fPacClear">✕ Limpar</button>
+          </div>
+        </div>
+        <p class="filter-count" id="fPacCount"></p>
         <table>
           <thead><tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>Data de Nascimento</th><th>Endereço</th><th>Ações</th></tr></thead>
           <tbody id="pacientesBody"></tbody>
@@ -136,7 +148,19 @@
         </form>
       </div>
       <div class="table-box">
-        <h3>Receitas Cadastradas</h3>
+        <div class="filter-bar">
+          <h3>Receitas Cadastradas</h3>
+          <div class="filter-fields">
+            <div class="filter-group"><label>Médico</label><input id="fRecMedico" placeholder="Nome do médico…"></div>
+            <div class="filter-group"><label>Paciente</label><input id="fRecPaciente" placeholder="Nome do paciente…"></div>
+            <div class="filter-group"><label>Voluntário</label><input id="fRecVoluntario" placeholder="Nome do voluntário…"></div>
+            <div class="filter-group"><label>Medicamento</label><input id="fRecMedicamento" placeholder="Nome do medicamento…"></div>
+            <div class="filter-group"><label>De</label><input id="fRecDe" type="date"></div>
+            <div class="filter-group"><label>Até</label><input id="fRecAte" type="date"></div>
+            <button class="btn-filter-clear" id="fRecClear">✕ Limpar</button>
+          </div>
+        </div>
+        <p class="filter-count" id="fRecCount"></p>
         <table>
           <thead><tr><th>Data</th><th>Médico</th><th>Paciente</th><th>Medicamentos</th><th>Voluntário</th><th>Ações</th></tr></thead>
           <tbody id="receitasBody"></tbody>
@@ -162,7 +186,20 @@
         </form>
       </div>
       <div class="table-box">
-        <h3>Medicamentos Cadastrados</h3>
+        <div class="filter-bar">
+          <h3>Medicamentos Cadastrados</h3>
+          <div class="filter-fields">
+            <div class="filter-group"><label>Nome comercial</label><input id="fMedNome" placeholder="Ex: Tylenol…"></div>
+            <div class="filter-group"><label>Princípio ativo</label><input id="fMedAtivo" placeholder="Ex: Paracetamol…"></div>
+            <div class="filter-group"><label>Laboratório</label><input id="fMedLab" placeholder="Ex: EMS…"></div>
+            <div class="filter-group filter-group--toggle">
+              <label>Estoque baixo</label>
+              <button class="btn-toggle-filter" id="fMedEstoque" data-active="false" title="Mostrar só com estoque ≤ 10">⚠️ Estoque ≤ 10</button>
+            </div>
+            <button class="btn-filter-clear" id="fMedClear">✕ Limpar</button>
+          </div>
+        </div>
+        <p class="filter-count" id="fMedCount"></p>
         <table>
           <thead><tr><th>Nome Comercial</th><th>Princípio Ativo</th><th>Dosagem</th><th>Laboratório</th><th>Lote</th><th>Validade</th><th>Estoque</th><th>Ações</th></tr></thead>
           <tbody id="medBody"></tbody>
@@ -186,7 +223,15 @@
         </form>
       </div>
       <div class="table-box">
-        <h3>Voluntários Cadastrados</h3>
+        <div class="filter-bar">
+          <h3>Voluntários Cadastrados</h3>
+          <div class="filter-fields">
+            <div class="filter-group"><label>Nome</label><input id="fVolNome" placeholder="Buscar por nome…"></div>
+            <div class="filter-group"><label>CPF</label><input id="fVolCpf" placeholder="000.000.000-00"></div>
+            <button class="btn-filter-clear" id="fVolClear">✕ Limpar</button>
+          </div>
+        </div>
+        <p class="filter-count" id="fVolCount"></p>
         <table>
           <thead><tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>Data de Nascimento</th><th>Ações</th></tr></thead>
           <tbody id="volBody"></tbody>
@@ -195,6 +240,19 @@
     </section>
 
     <section id="filas" class="page" style="display:none">
+      <div class="table-box" style="margin-bottom:24px">
+        <div class="filter-bar">
+          <h3>Fila de Entrega</h3>
+          <div class="filter-fields">
+            <div class="filter-group"><label>Paciente</label><input id="fFilaPaciente" placeholder="Nome do paciente…"></div>
+            <div class="filter-group"><label>Médico</label><input id="fFilaMedico" placeholder="Nome do médico…"></div>
+            <div class="filter-group"><label>Voluntário</label><input id="fFilaVoluntario" placeholder="Nome do voluntário…"></div>
+            <div class="filter-group"><label>Medicamento</label><input id="fFilaMedicamento" placeholder="Nome do remédio…"></div>
+            <button class="btn-filter-clear" id="fFilaClear">✕ Limpar</button>
+          </div>
+        </div>
+        <p class="filter-count" id="fFilaCount"></p>
+      </div>
       <div class="fila-container" id="filaContainer"></div>
     </section>
     
@@ -208,6 +266,8 @@
     </div>
   </main>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="./assets/js/script.js"></script>
 </body>
 </html>

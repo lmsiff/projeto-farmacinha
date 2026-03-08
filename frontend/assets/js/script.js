@@ -101,8 +101,16 @@ class DeleteModal {
             this.close();
         });
     }
-    open(label, confirmFn) {
-        this.textEl.textContent = `Excluir "${label}"? Ação irreversível.`;
+    open(label, confirmFn, impacto = null) {
+        this.textEl.innerHTML = `
+      <strong style="font-size:1rem">Excluir "${label}"?</strong>
+      <p style="margin-top:8px;color:#6b7280;font-size:0.88rem">Esta ação é <strong>irreversível</strong>.</p>
+      ${impacto ? `<div style="
+        margin-top:12px;padding:10px 14px;
+        background:#fff7ed;border-left:3px solid #f97316;
+        border-radius:6px;font-size:0.85rem;color:#92400e;line-height:1.5
+      ">⚠️ ${impacto}</div>` : ''}
+    `;
         this.onConfirm = confirmFn;
         this.modal.classList.add('open');
     }
@@ -111,20 +119,82 @@ class DeleteModal {
         this.onConfirm = null;
     }
 }
+// ── FILTROS ─────────────────────────────────────────────────────────────
+function normalizar(str) {
+    return (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+function textoContem(campo, busca) {
+    return normalizar(campo).includes(normalizar(busca));
+}
+class FilterManager {
+    constructor(inputIds, countId, clearId, filterFn) {
+        this.filterFn = filterFn;
+        this.inputs = inputIds.map((id) => DOM.get(id)).filter(Boolean);
+        this.countEl = DOM.get(countId);
+        this.clearBtn = DOM.get(clearId);
+        this.inputs.forEach((inp) => {
+            if (inp.tagName === 'BUTTON') return;
+            inp.addEventListener('input', () => this.apply());
+        });
+        if (this.clearBtn) {
+            this.clearBtn.addEventListener('click', () => this.clear());
+        }
+    }
+    apply() {
+        this.filterFn();
+    }
+    clear() {
+        this.inputs.forEach((inp) => {
+            if (inp.tagName === 'INPUT') inp.value = '';
+            if (inp.tagName === 'BUTTON') {
+                inp.dataset.active = 'false';
+            }
+        });
+        this.apply();
+    }
+    setCount(visible, total) {
+        if (!this.countEl) return;
+        if (visible === total) {
+            this.countEl.innerHTML = `<span>${total}</span> registro${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}`;
+        } else {
+            this.countEl.innerHTML = `Exibindo <span>${visible}</span> de ${total} registro${total !== 1 ? 's' : ''}`;
+        }
+    }
+}
+// ────────────────────────────────────────────────────────────────────────
 class PacientesManager {
     constructor() {
         this.editId = null;
+        this._list = [];
         DOM.get('formBtn').addEventListener('click', () => this.save());
+        this.filter = new FilterManager(
+            ['fPacNome', 'fPacCpf', 'fPacEnd'],
+            'fPacCount', 'fPacClear',
+            () => this.applyFilter()
+        );
         this.load();
     }
     async load() {
         try {
             const list = await apiFetch('/pacientes');
-            this.render(list);
+            this._list = list || [];
+            this.applyFilter();
         }
         catch {
             showToast('Erro ao carregar pacientes', 'error');
         }
+    }
+    applyFilter() {
+        const nome = DOM.get('fPacNome')?.value ?? '';
+        const cpf = DOM.get('fPacCpf')?.value ?? '';
+        const end = DOM.get('fPacEnd')?.value ?? '';
+        const filtered = this._list.filter((p) =>
+            textoContem(p.nome, nome) &&
+            textoContem(p.cpf, cpf) &&
+            textoContem(p.endereco, end)
+        );
+        this.render(filtered);
+        this.filter.setCount(filtered.length, this._list.length);
     }
     render(list) {
         const tbody = DOM.get('pacientesBody');
@@ -142,7 +212,7 @@ class PacientesManager {
       `;
             tbody.appendChild(tr);
         });
-        App.instance.receitasManager.syncSelectPacientes(list || []);
+        App.instance.receitasManager.syncSelectPacientes(this._list);
     }
     startEdit(id) {
         const row = DOM.get('pacientesBody').querySelector(`tr[data-id="${id}"]`);
@@ -202,6 +272,7 @@ class PacientesManager {
         }
     }
     async delete(id, nome) {
+        const impacto = 'Todas as <strong>receitas cadastradas</strong> para este paciente também serão excluídas, incluindo seus itens na fila de entrega.';
         App.instance.deleteModal.open(nome, async () => {
             try {
                 await apiFetch(`/pacientes/${id}`, { method: 'DELETE' });
@@ -211,25 +282,55 @@ class PacientesManager {
             catch (e) {
                 showToast(e.message, 'error');
             }
-        });
+        }, impacto);
     }
 }
 class MedicamentosManager {
     constructor() {
         this.editId = null;
+        this._list = [];
         DOM.get('medFormBtn').addEventListener('click', () => this.save());
+        this.filter = new FilterManager(
+            ['fMedNome', 'fMedAtivo', 'fMedLab', 'fMedEstoque'],
+            'fMedCount', 'fMedClear',
+            () => this.applyFilter()
+        );
+        // botão toggle estoque baixo
+        const btnEstoque = DOM.get('fMedEstoque');
+        if (btnEstoque) {
+            btnEstoque.addEventListener('click', () => {
+                const ativo = btnEstoque.dataset.active === 'true';
+                btnEstoque.dataset.active = String(!ativo);
+                this.applyFilter();
+            });
+        }
         this.load();
     }
     async load() {
         try {
             const list = await apiFetch('/medicamentos');
-            this.render(list);
+            this._list = list || [];
+            this.applyFilter();
             return list;
         }
         catch {
             showToast('Erro ao carregar medicamentos', 'error');
             return [];
         }
+    }
+    applyFilter() {
+        const nome = DOM.get('fMedNome')?.value ?? '';
+        const ativo = DOM.get('fMedAtivo')?.value ?? '';
+        const lab = DOM.get('fMedLab')?.value ?? '';
+        const soBaixo = DOM.get('fMedEstoque')?.dataset.active === 'true';
+        const filtered = this._list.filter((m) =>
+            textoContem(m.nomeComercial, nome) &&
+            textoContem(m.principioAtivo, ativo) &&
+            textoContem(m.laboratorio, lab) &&
+            (!soBaixo || m.quantidade <= 10)
+        );
+        this.render(filtered);
+        this.filter.setCount(filtered.length, this._list.length);
     }
     render(list) {
         const tbody = DOM.get('medBody');
@@ -238,6 +339,7 @@ class MedicamentosManager {
             const tr = document.createElement('tr');
             tr.dataset.id = String(m.id);
             const val = m.validade ? m.validade.slice(0, 7).split('-').reverse().join('/') : '';
+            const estoqueStyle = m.quantidade <= 10 ? 'color:#ef4444;font-weight:700' : '';
             tr.innerHTML = `
         <td>${m.nomeComercial}</td>
         <td>${m.principioAtivo}</td>
@@ -245,12 +347,12 @@ class MedicamentosManager {
         <td>${m.laboratorio}</td>
         <td>${m.lote}</td>
         <td>${val}</td>
-        <td>${m.quantidade}</td>
+        <td style="${estoqueStyle}">${m.quantidade}${m.quantidade <= 10 ? ' ⚠️' : ''}</td>
         <td>${DOM.makeBtns('medicamentos', m.id)}</td>
       `;
             tbody.appendChild(tr);
         });
-        App.instance.receitasManager.syncSelectMedicamentos(list || []);
+        App.instance.receitasManager.syncSelectMedicamentos(this._list);
     }
     startEdit(id) {
         const row = DOM.get('medBody').querySelector(`tr[data-id="${id}"]`);
@@ -312,6 +414,7 @@ class MedicamentosManager {
         }
     }
     async delete(id, nome) {
+        const impacto = 'Todas as <strong>receitas que contêm este medicamento</strong> terão o item removido. Receitas que ficarem sem nenhum medicamento serão <strong>excluídas automaticamente</strong>, junto com seus registros na fila de entrega.';
         App.instance.deleteModal.open(nome, async () => {
             try {
                 await apiFetch(`/medicamentos/${id}`, { method: 'DELETE' });
@@ -321,28 +424,55 @@ class MedicamentosManager {
             catch (e) {
                 showToast(e.message, 'error');
             }
-        });
+        }, impacto);
     }
 }
 class ReceitasManager {
     constructor() {
         this.editId = null;
+        this._list = [];
         this.pacientes = [];
         this.voluntarios = [];
         this.medicamentos = [];
         DOM.get('btnAdicionarMed').addEventListener('click', () => this.addMedRow());
         DOM.get('receitaFormBtn').addEventListener('click', () => this.save());
+        this.filter = new FilterManager(
+            ['fRecMedico', 'fRecPaciente', 'fRecVoluntario', 'fRecMedicamento', 'fRecDe', 'fRecAte'],
+            'fRecCount', 'fRecClear',
+            () => this.applyFilter()
+        );
         this.addMedRow();
         this.load();
     }
     async load() {
         try {
             const list = await apiFetch('/receitas');
-            this.render(list);
+            this._list = list || [];
+            this.applyFilter();
         }
         catch {
             showToast('Erro ao carregar receitas', 'error');
         }
+    }
+    applyFilter() {
+        const medico = DOM.get('fRecMedico')?.value ?? '';
+        const paciente = DOM.get('fRecPaciente')?.value ?? '';
+        const voluntario = DOM.get('fRecVoluntario')?.value ?? '';
+        const medicamento = DOM.get('fRecMedicamento')?.value ?? '';
+        const de = DOM.get('fRecDe')?.value ?? '';
+        const ate = DOM.get('fRecAte')?.value ?? '';
+        const filtered = this._list.filter((r) => {
+            if (!textoContem(r.medico, medico)) return false;
+            if (!textoContem(r.paciente?.nome ?? '', paciente)) return false;
+            if (!textoContem(r.voluntario?.nome ?? '', voluntario)) return false;
+            if (medicamento && !(r.itens || []).some((it) => textoContem(it.medicamento.nomeComercial, medicamento))) return false;
+            const dataR = r.data ? r.data.slice(0, 10) : '';
+            if (de && dataR < de) return false;
+            if (ate && dataR > ate) return false;
+            return true;
+        });
+        this.render(filtered);
+        this.filter.setCount(filtered.length, this._list.length);
     }
     render(list) {
         const tbody = DOM.get('receitasBody');
@@ -384,12 +514,12 @@ class ReceitasManager {
             const cur = sel.value;
             sel.innerHTML =
                 '<option value="">Selecione</option>' +
-                    list.map((m) => `<option value="${m.id}"${String(m.id) === cur ? ' selected' : ''}>${m.nomeComercial} ${m.dosagem}</option>`).join('');
+                    list.map((m) => `<option value="${m.id}" data-estoque="${m.quantidade}"${String(m.id) === cur ? ' selected' : ''}>${m.nomeComercial} ${m.dosagem} (${m.quantidade} em estoque)</option>`).join('');
         });
     }
     getMedOptions(selectedId = '') {
         return ('<option value="">Selecione</option>' +
-            this.medicamentos.map((m) => `<option value="${m.id}"${String(m.id) === String(selectedId) ? ' selected' : ''}>${m.nomeComercial} ${m.dosagem}</option>`).join(''));
+            this.medicamentos.map((m) => `<option value="${m.id}" data-estoque="${m.quantidade}"${String(m.id) === String(selectedId) ? ' selected' : ''}>${m.nomeComercial} ${m.dosagem} (${m.quantidade} em estoque)</option>`).join(''));
     }
     addMedRow(medId = '', qtd = '') {
         const div = document.createElement('div');
@@ -398,6 +528,27 @@ class ReceitasManager {
             `<div class="form-group"><label>Medicamento</label><select class="r-med">${this.getMedOptions(medId)}</select></div>` +
                 `<div class="form-group"><label>Qtd</label><input class="r-qtd" type="number" min="1" placeholder="30" value="${qtd}"></div>` +
                 `<button type="button" class="btn-remove-med">−</button>`;
+        const sel = div.querySelector('.r-med');
+        const qtdInput = div.querySelector('.r-qtd');
+        const updateMax = () => {
+            const opt = sel.options[sel.selectedIndex];
+            const estoque = opt ? parseInt(opt.dataset.estoque ?? '0') : 0;
+            qtdInput.max = String(estoque);
+            qtdInput.title = estoque > 0 ? `Máximo disponível: ${estoque}` : '';
+            const val = parseInt(qtdInput.value);
+            if (qtdInput.value && val > estoque) {
+                qtdInput.setCustomValidity(`Máximo ${estoque} em estoque`);
+                qtdInput.style.borderColor = '#ef4444';
+                qtdInput.style.boxShadow = '0 0 0 2px #fee2e2';
+            } else {
+                qtdInput.setCustomValidity('');
+                qtdInput.style.borderColor = '';
+                qtdInput.style.boxShadow = '';
+            }
+        };
+        sel.addEventListener('change', updateMax);
+        qtdInput.addEventListener('input', updateMax);
+        if (medId) setTimeout(updateMax, 0);
         div.querySelector('.btn-remove-med').addEventListener('click', () => {
             if (DOM.get('medList').children.length > 1)
                 div.remove();
@@ -474,6 +625,7 @@ class ReceitasManager {
         }
     }
     async delete(id) {
+        const impacto = 'Esta receita será removida da <strong>fila de entrega</strong> e todos os seus <strong>itens de medicamentos</strong> serão excluídos.';
         App.instance.deleteModal.open(`Receita #${id}`, async () => {
             try {
                 await apiFetch(`/receitas/${id}`, { method: 'DELETE' });
@@ -483,18 +635,25 @@ class ReceitasManager {
             catch (e) {
                 showToast(e.message, 'error');
             }
-        });
+        }, impacto);
     }
 }
 class VoluntariosManager {
     constructor() {
         this.editId = null;
+        this._list = [];
         DOM.get('volFormBtn').addEventListener('click', () => this.save());
+        this.filter = new FilterManager(
+            ['fVolNome', 'fVolCpf'],
+            'fVolCount', 'fVolClear',
+            () => this.applyFilter()
+        );
     }
     async load() {
         try {
             const list = await apiFetch('/voluntarios');
-            this.render(list);
+            this._list = (list || []).filter((v) => !v.isAdmin);
+            this.applyFilter();
             App.instance.receitasManager.syncSelectVoluntarios(list || []);
             return list;
         }
@@ -503,12 +662,20 @@ class VoluntariosManager {
             return [];
         }
     }
+    applyFilter() {
+        const nome = DOM.get('fVolNome')?.value ?? '';
+        const cpf = DOM.get('fVolCpf')?.value ?? '';
+        const filtered = this._list.filter((v) =>
+            textoContem(v.nome, nome) &&
+            textoContem(v.cpf, cpf)
+        );
+        this.render(filtered);
+        this.filter.setCount(filtered.length, this._list.length);
+    }
     render(list) {
         const tbody = DOM.get('volBody');
         tbody.innerHTML = '';
         (list || []).forEach((v) => {
-            if (v.isAdmin)
-                return;
             const tr = document.createElement('tr');
             tr.dataset.id = String(v.id);
             tr.innerHTML = `
@@ -580,6 +747,7 @@ class VoluntariosManager {
         }
     }
     async delete(id, nome) {
+        const impacto = 'Todas as <strong>receitas cadastradas por este voluntário</strong> também serão excluídas, incluindo seus itens na fila de entrega.';
         App.instance.deleteModal.open(nome, async () => {
             try {
                 await apiFetch(`/voluntarios/${id}`, { method: 'DELETE' });
@@ -589,28 +757,51 @@ class VoluntariosManager {
             catch (e) {
                 showToast(e.message, 'error');
             }
-        });
+        }, impacto);
     }
 }
 class FilaManager {
     constructor() {
+        this._list = [];
         this.dragged = null;
         this.checkStates = {};
         this.modal = DOM.get('filaModal');
         this.modalTit = DOM.get('filaModalTitulo');
         this.modalRec = DOM.get('filaModalReceita');
         this.modalMeds = DOM.get('filaModalMeds');
+        this.filter = new FilterManager(
+            ['fFilaPaciente', 'fFilaMedico', 'fFilaVoluntario', 'fFilaMedicamento'],
+            'fFilaCount', 'fFilaClear',
+            () => this.applyFilter()
+        );
         this.initModalClose();
         this.load();
     }
     async load() {
         try {
             const list = await apiFetch('/fila');
-            this.render(list || []);
+            this._list = list || [];
+            this.applyFilter();
         }
         catch {
             showToast('Erro ao carregar fila', 'error');
         }
+    }
+    applyFilter() {
+        const paciente = DOM.get('fFilaPaciente')?.value ?? '';
+        const medico = DOM.get('fFilaMedico')?.value ?? '';
+        const voluntario = DOM.get('fFilaVoluntario')?.value ?? '';
+        const medicamento = DOM.get('fFilaMedicamento')?.value ?? '';
+        const filtered = this._list.filter((item) => {
+            const r = item.receita;
+            if (!textoContem(r.paciente?.nome ?? '', paciente)) return false;
+            if (!textoContem(r.medico ?? '', medico)) return false;
+            if (!textoContem(r.voluntario?.nome ?? '', voluntario)) return false;
+            if (medicamento && !(r.itens || []).some((it) => textoContem(it.medicamento.nomeComercial, medicamento))) return false;
+            return true;
+        });
+        this.render(filtered);
+        this.filter.setCount(filtered.length, this._list.length);
     }
     render(list) {
         const container = DOM.get('filaContainer');
@@ -1003,6 +1194,218 @@ async function loadDashboard() {
         showToast('Erro ao carregar dashboard', 'error');
     }
 }
+// ── GERADOR DE RELATÓRIO PDF ────────────────────────────────────────────
+async function gerarRelatorioPDF() {
+    const btn = DOM.get('btnGerarRelatorio');
+    btn.disabled = true;
+    btn.textContent = '⏳ Gerando PDF…';
+    try {
+        const [dashboard, pacientes, medicamentos, receitas, voluntarios, fila] = await Promise.all([
+            apiFetch('/relatorios/dashboard'),
+            apiFetch('/pacientes'),
+            apiFetch('/medicamentos'),
+            apiFetch('/receitas'),
+            apiFetch('/voluntarios'),
+            apiFetch('/fila'),
+        ]);
+
+        const now = new Date();
+        const dataEmissao = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+        const horaEmissao = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const user = getUser();
+        const alertas = dashboard.alertas;
+        const faixas = dashboard.pacientesPorFaixaEtaria;
+        const totalPac = Object.values(faixas).reduce((a, b) => a + b, 0);
+        const vols = (voluntarios || []).filter(v => !v.isAdmin);
+
+        const fmtDate = (raw) => {
+            if (!raw) return '—';
+            const d = new Date(raw);
+            return new Date(d.getTime() + d.getTimezoneOffset() * 60000).toLocaleDateString('pt-BR');
+        };
+
+        const tableRows = (cols, rows, redFn) => `
+          <table>
+            <thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${rows.length ? rows.map(r => `<tr>${r.map((cell, ci) => `<td class="${redFn && redFn(r, ci) ? 'red-cell' : ''}">${cell ?? '—'}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" style="color:#9ca3af;text-align:center">Nenhum registro.</td></tr>`}
+            </tbody>
+          </table>`;
+
+        const secao = (icone, titulo, conteudo) => `
+          <div class="secao">
+            <div class="secao-titulo"><span class="secao-icone">${icone}</span>${titulo}</div>
+            ${conteudo}
+          </div>`;
+
+        const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+          body { background: #fff; color: #1f2933; font-size: 12px; width: 794px; }
+          .cabecalho { background: linear-gradient(135deg, #0e7490, #65c5da); color: #fff; padding: 28px 32px 22px; position: relative; overflow: hidden; }
+          .cabecalho::after { content: ''; position: absolute; right: -30px; top: -30px; width: 160px; height: 160px; background: rgba(255,255,255,0.1); border-radius: 50%; }
+          .cabecalho h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+          .cabecalho p { margin-top: 4px; opacity: 0.88; font-size: 13px; }
+          .cabecalho .meta { margin-top: 12px; font-size: 11px; opacity: 0.75; }
+          .corpo { padding: 24px 32px; }
+          .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+          .kpi { background: #f4fbfd; border-radius: 10px; padding: 14px; text-align: center; border: 1px solid #e0f2f7; }
+          .kpi-val { font-size: 28px; font-weight: 800; color: #0e7490; line-height: 1; }
+          .kpi-label { font-size: 10.5px; color: #6b7280; margin-top: 4px; }
+          .alerta { background: #fef2f2; border-left: 4px solid #ef4444; border-radius: 6px; padding: 10px 14px; margin-bottom: 20px; color: #991b1b; font-size: 11.5px; font-weight: 600; }
+          .secao { margin-bottom: 22px; page-break-inside: avoid; }
+          .secao-titulo { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #0e7490; background: #f0f9ff; border-left: 4px solid #0e7490; padding: 8px 12px; border-radius: 0 6px 6px 0; margin-bottom: 10px; }
+          .secao-icone { font-size: 15px; }
+          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          th { background: #0e7490; color: #fff; text-align: left; padding: 7px 9px; font-weight: 600; font-size: 10.5px; }
+          td { padding: 6px 9px; border-bottom: 1px solid #e5e7eb; }
+          tr:nth-child(even) td { background: #f8fafb; }
+          .red-cell { color: #ef4444; font-weight: 700; }
+          .faixa-etaria { font-size: 10.5px; color: #6b7280; margin-bottom: 8px; }
+          .faixa-etaria span { background: #e0f2f7; color: #0e7490; border-radius: 4px; padding: 2px 7px; margin-right: 6px; font-weight: 600; }
+          .rodape { background: #0e7490; color: #fff; padding: 10px 32px; font-size: 10px; display: flex; justify-content: space-between; margin-top: 12px; }
+        </style></head><body>
+          <div class="cabecalho">
+            <h1>Farmacia Comunitaria</h1>
+            <p>Relatorio Geral do Sistema</p>
+            <div class="meta">Emitido em ${dataEmissao} as ${horaEmissao} &nbsp;•&nbsp; Por: ${user?.nome ?? 'Usuario'}</div>
+          </div>
+          <div class="corpo">
+            <div class="kpis">
+              <div class="kpi"><div class="kpi-val">${dashboard.totais.receitas}</div><div class="kpi-label">Receitas Totais</div></div>
+              <div class="kpi"><div class="kpi-val">${dashboard.totais.pacientes}</div><div class="kpi-label">Pacientes</div></div>
+              <div class="kpi"><div class="kpi-val">${dashboard.totais.medicamentos}</div><div class="kpi-label">Medicamentos</div></div>
+              <div class="kpi"><div class="kpi-val">${dashboard.totais.voluntarios}</div><div class="kpi-label">Voluntarios</div></div>
+            </div>
+            ${(alertas.estoqueBaixo > 0 || alertas.voluntariosInativos > 0) ? `
+            <div class="alerta">
+              ${alertas.estoqueBaixo > 0 ? `⚠ ${alertas.estoqueBaixo} medicamento(s) com estoque baixo (<=10)` : ''}
+              ${alertas.estoqueBaixo > 0 && alertas.voluntariosInativos > 0 ? ' &nbsp;•&nbsp; ' : ''}
+              ${alertas.voluntariosInativos > 0 ? `⚠ ${alertas.voluntariosInativos} voluntario(s) sem atividade recente` : ''}
+            </div>` : ''}
+
+            ${secao('💊', 'Medicamentos Mais Distribuidos',
+              tableRows(['#', 'Medicamento', 'Qtd. Total Distribuida'],
+                dashboard.medicamentosMaisDistribuidos.map((m, i) => [i + 1, m.medicamento, m.total]))
+            )}
+
+            ${secao('🏥', 'Estoque de Medicamentos',
+              tableRows(
+                ['Nome Comercial', 'Principio Ativo', 'Dosagem', 'Laboratorio', 'Validade', 'Estoque'],
+                medicamentos.map(m => {
+                  const val = m.validade ? m.validade.slice(0,7).split('-').reverse().join('/') : '—';
+                  return [m.nomeComercial, m.principioAtivo, m.dosagem, m.laboratorio, val, m.quantidade];
+                }),
+                (row, ci) => ci === 5 && parseInt(row[5]) <= 10
+              )
+            )}
+
+            ${secao('👥', 'Pacientes Cadastrados', `
+              ${totalPac > 0 ? `<div class="faixa-etaria">Faixa etaria: ${Object.entries(faixas).map(([k,v]) => `<span>${k} anos: ${v}</span>`).join('')}</div>` : ''}
+              ${tableRows(
+                ['Nome', 'CPF', 'Telefone', 'Nasc.', 'Endereco'],
+                pacientes.map(p => [p.nome, p.cpf, p.telefone, fmtDate(p.dataNasc), p.endereco])
+              )}`
+            )}
+
+            ${secao('📋', 'Receitas Cadastradas',
+              tableRows(
+                ['Data', 'Medico', 'Paciente', 'Medicamentos', 'Voluntario'],
+                receitas.map(r => [
+                  fmtDate(r.data), r.medico, r.paciente?.nome ?? '—',
+                  (r.itens || []).map(it => `${it.medicamento.nomeComercial} x${it.quantidade}`).join(', '),
+                  r.voluntario?.nome ?? '—'
+                ])
+              )
+            )}
+
+            ${vols.length ? secao('🙋', 'Voluntarios',
+              tableRows(['Nome', 'CPF', 'Telefone', 'Data de Nasc.'],
+                vols.map(v => [v.nome, v.cpf, v.telefone, fmtDate(v.dataNasc)])
+              )
+            ) : ''}
+
+            ${fila.length ? secao('🕐', 'Fila de Entrega (Pendentes)',
+              tableRows(
+                ['#', 'Paciente', 'Medico', 'Voluntario', 'Medicamentos'],
+                fila.map((item, i) => {
+                  const r = item.receita;
+                  return [i + 1, r.paciente?.nome ?? '—', r.medico, r.voluntario?.nome ?? '—',
+                    (r.itens || []).map(it => `${it.medicamento.nomeComercial} x${it.quantidade}`).join(', ')];
+                })
+              )
+            ) : ''}
+          </div>
+          <div class="rodape">
+            <span>Farmacia Comunitaria &nbsp;•&nbsp; Documento gerado automaticamente</span>
+            <span>${dataEmissao}</span>
+          </div>
+        </body></html>`;
+
+        // Renderiza o HTML num iframe invisível e captura com html2canvas
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;height:1px;border:none;visibility:hidden';
+        document.body.appendChild(iframe);
+        iframe.contentDocument.open();
+        iframe.contentDocument.write(html);
+        iframe.contentDocument.close();
+
+        await new Promise(r => setTimeout(r, 400)); // aguarda renderização
+
+        const iDoc = iframe.contentDocument.documentElement;
+        const fullH = iDoc.scrollHeight;
+        iframe.style.height = fullH + 'px';
+
+        await new Promise(r => setTimeout(r, 100));
+
+        const canvas = await html2canvas(iframe.contentDocument.body, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            width: 794,
+            height: fullH,
+            windowWidth: 794,
+        });
+
+        document.body.removeChild(iframe);
+
+        const { jsPDF } = window.jspdf;
+        const A4_W = 210, A4_H = 297;
+        const imgW = A4_W;
+        const imgH = (canvas.height * A4_W) / canvas.width;
+        const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+        let posY = 0;
+        let pageH = A4_H;
+        let pageNum = 0;
+
+        while (posY < imgH) {
+            if (pageNum > 0) doc.addPage();
+            const srcY = (posY / imgH) * canvas.height;
+            const srcH = Math.min((pageH / imgH) * canvas.height, canvas.height - srcY);
+            const sliceCanvas = document.createElement('canvas');
+            sliceCanvas.width = canvas.width;
+            sliceCanvas.height = srcH;
+            sliceCanvas.getContext('2d').drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+            const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.92);
+            const sliceH = (srcH / canvas.height) * imgH;
+            doc.addImage(sliceData, 'JPEG', 0, 0, imgW, sliceH);
+            posY += pageH;
+            pageNum++;
+        }
+
+        const nomeArquivo = `relatorio-farmacia-${now.toISOString().slice(0, 10)}.pdf`;
+        doc.save(nomeArquivo);
+        showToast('PDF gerado e baixado com sucesso!');
+    } catch (e) {
+        showToast('Erro ao gerar PDF: ' + e.message, 'error');
+        console.error(e);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '📄 Gerar Relatório PDF';
+    }
+}
+// ────────────────────────────────────────────────────────────────────────
 function initEventDelegation() {
     document.addEventListener('click', (e) => {
         const target = e.target;
@@ -1049,6 +1452,7 @@ class App {
             DOM.get('menuVoluntarios').style.display = '';
         }
         DOM.get('btnLogout').addEventListener('click', logout);
+        DOM.get('btnGerarRelatorio').addEventListener('click', gerarRelatorioPDF);
         this.deleteModal = new DeleteModal();
         this.receitasManager = new ReceitasManager();
         this.pacientesManager = new PacientesManager();
