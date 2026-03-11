@@ -17,6 +17,22 @@ export class FilaRepository {
     });
   }
 
+  findEntregues() {
+    return prisma.fila.findMany({
+      where: { entregue: true },
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        receita: {
+          include: {
+            paciente: { select: { id: true, nome: true } },
+            voluntario: { select: { id: true, nome: true } },
+            itens: { include: { medicamento: { select: { id: true, nomeComercial: true, dosagem: true } } } },
+          },
+        },
+      },
+    });
+  }
+
   findById(id: number) {
     return prisma.fila.findUnique({
       where: { id },

@@ -12,6 +12,14 @@ export class FilaController {
     }
   }
 
+  async listarEntregues(req: Request, res: Response): Promise<void> {
+    try {
+      res.json(await service.listarEntregues());
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
   async adicionar(req: Request, res: Response): Promise<void> {
     try {
       const { receitaId } = req.body;

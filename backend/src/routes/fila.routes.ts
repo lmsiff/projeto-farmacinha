@@ -8,6 +8,7 @@ const controller = new FilaController();
 router.use(authenticate);
 
 router.get('/', (req, res) => controller.listar(req, res));
+router.get('/entregues', (req, res) => controller.listarEntregues(req, res));
 router.post('/', (req, res) => controller.adicionar(req, res));
 router.patch('/:id/entregar', (req, res) => controller.marcarEntregue(req, res));
 router.patch('/reordenar', (req, res) => controller.reordenar(req, res));

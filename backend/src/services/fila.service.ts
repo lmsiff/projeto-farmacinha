@@ -8,6 +8,10 @@ export class FilaService {
     return repo.findAll();
   }
 
+  listarEntregues() {
+    return repo.findEntregues();
+  }
+
   async adicionarReceita(receitaId: number) {
     return repo.create(receitaId);
   }
