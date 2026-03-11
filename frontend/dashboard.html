@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Relatórios | Farmácia Comunitária</title>
+  <title>Dashboard | Farmácia Comunitária</title>
   <link rel="stylesheet" href="./assets/styles/dashboard.css">
 </head>
 
@@ -12,7 +12,7 @@
   <aside class="sidebar">
     <h1>Farmácia</h1>
     <nav class="menu">
-      <a class="active" data-section="dashboard">Relatórios</a>
+      <a class="active" data-section="dashboard">Início</a>
       <a data-section="pacientes">Pacientes</a>
       <a data-section="receitas">Receitas</a>
       <a data-section="medicamentos">Medicamentos</a>
@@ -26,9 +26,9 @@
 
   <main class="main">
     <div class="topbar">
-      <h2 id="title">Relatórios</h2>
+      <h2 id="title">Dashboard</h2>
       <div style="display:flex;align-items:center;gap:12px">
-        <button id="btnGerarRelatorio" class="btn-gerar-relatorio">📄 Gerar Relatório PDF</button>
+        <button id="btnAbrirModalRelatorio" class="btn-gerar-relatorio">📄 Gerar Relatório PDF</button>
         <div class="user" id="userLabel">Carregando...</div>
       </div>
     </div>
@@ -269,5 +269,81 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="./assets/js/script.js"></script>
+
+    <!-- MODAL RELATÓRIO PDF -->
+    <div class="relatorio-modal-overlay" id="relatorioModal">
+      <div class="relatorio-modal-box">
+        <h3>📊 Gerar Relatório PDF</h3>
+        <p class="rel-subtitle">Selecione o que deseja incluir no relatório e aplique filtros se necessário.</p>
+
+        <div class="rel-section-label">Seções do relatório</div>
+        <div class="rel-checks">
+          <label class="rel-check-item checked" id="chkLabelResumo">
+            <input type="checkbox" id="chkResumo" checked> Resumo Geral (KPIs)
+          </label>
+          <label class="rel-check-item checked" id="chkLabelMedsDist">
+            <input type="checkbox" id="chkMedsDist" checked> Medicamentos Mais Distribuídos
+          </label>
+          <label class="rel-check-item checked" id="chkLabelEstoque">
+            <input type="checkbox" id="chkEstoque" checked> Estoque de Medicamentos
+          </label>
+          <label class="rel-check-item checked" id="chkLabelPacientes">
+            <input type="checkbox" id="chkPacientes" checked> Pacientes
+          </label>
+          <label class="rel-check-item checked" id="chkLabelReceitas">
+            <input type="checkbox" id="chkReceitas" checked> Receitas
+          </label>
+          <label class="rel-check-item checked" id="chkLabelVoluntarios">
+            <input type="checkbox" id="chkVoluntarios" checked> Voluntários
+          </label>
+          <label class="rel-check-item checked" id="chkLabelFila">
+            <input type="checkbox" id="chkFila" checked> Fila Pendente
+          </label>
+          <label class="rel-check-item checked" id="chkLabelFilaEntregues">
+            <input type="checkbox" id="chkFilaEntregues" checked> Fila de Entrega (Entregues)
+          </label>
+        </div>
+
+        <div class="rel-section-label">Período das receitas</div>
+        <div class="rel-date-row">
+          <div class="form-group">
+            <label for="relDataDe">De</label>
+            <input type="date" id="relDataDe">
+          </div>
+          <div class="form-group">
+            <label for="relDataAte">Até</label>
+            <input type="date" id="relDataAte">
+          </div>
+        </div>
+
+        <div class="rel-section-label">Filtros adicionais</div>
+        <div class="rel-filtros-extra">
+          <div class="form-group">
+            <label for="relFiltroPaciente">Paciente</label>
+            <select id="relFiltroPaciente">
+              <option value="">Todos os pacientes</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="relFiltroMedico">Médico</label>
+            <select id="relFiltroMedico">
+              <option value="">Todos os médicos</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="relFiltroMedicamento">Medicamento</label>
+            <select id="relFiltroMedicamento">
+              <option value="">Todos os medicamentos</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="rel-modal-actions">
+          <button class="btn-cancel" id="btnFecharModalRelatorio">Cancelar</button>
+          <button class="btn-gerar-pdf" id="btnGerarRelatorio">📄 Gerar PDF</button>
+        </div>
+      </div>
+    </div>
+
 </body>
 </html>

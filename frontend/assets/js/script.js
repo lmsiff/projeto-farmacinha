@@ -814,7 +814,8 @@ class FilaManager {
             const r = item.receita;
             const meds = (r.itens || []).map((it) => `${it.medicamento.nomeComercial} ${it.medicamento.dosagem} × ${it.quantidade}`);
             const card = document.createElement('div');
-            card.className = 'fila-card';
+            const isEntregue = item.entregue === true;
+            card.className = 'fila-card' + (isEntregue ? ' entregue' : '');
             card.draggable = true;
             card.dataset.id = String(item.id);
             card.dataset.meds = meds.join('|');
@@ -832,12 +833,9 @@ class FilaManager {
         <div class="fila-meds-list">
           ${meds.map((m) => `<span class="fila-med-tag">${m}</span>`).join('')}
         </div>
-        <button class="btn-check" data-fila-id="${item.id}" title="Entregar">✓</button>
+        ${isEntregue ? '<span class="badge-entregue">✅ Entregue</span>' : ''}
       `;
-            card.querySelector('.btn-check').addEventListener('click', async (e) => {
-                e.stopPropagation();
-                await this.marcarEntregue(item.id, card);
-            });
+
             card.addEventListener('click', () => this.openModal(card));
             this.initDrag(card);
             container.appendChild(card);
@@ -964,23 +962,20 @@ class FilaManager {
     async syncEntregue(filaId, card, entregue) {
         try {
             await apiFetch(`/fila/${filaId}/entregar`, { method: 'PATCH', body: JSON.stringify({ entregue }) });
-            const btn = card.querySelector('.btn-check');
-            const statusEl = card.querySelector('.status-entregue');
+            const badgeExistente = card.querySelector('.badge-entregue');
             if (entregue) {
-                btn.classList.add('checked');
-                btn.style.background = '#10b981';
-                if (!statusEl) {
-                    const s = document.createElement('span');
-                    s.className = 'status-entregue';
-                    s.textContent = 'Status: Entregue';
-                    btn.insertAdjacentElement('beforebegin', s);
+                card.classList.add('entregue');
+                if (!badgeExistente) {
+                    const badge = document.createElement('span');
+                    badge.className = 'badge-entregue';
+                    badge.textContent = '✅ Entregue';
+                    card.querySelector('.fila-meds-list').insertAdjacentElement('afterend', badge);
                 }
                 card.style.opacity = '0.6';
             }
             else {
-                btn.classList.remove('checked');
-                btn.style.background = '';
-                statusEl?.remove();
+                card.classList.remove('entregue');
+                badgeExistente?.remove();
                 card.style.opacity = '1';
             }
         }
@@ -1195,18 +1190,28 @@ async function loadDashboard() {
     }
 }
 // ── GERADOR DE RELATÓRIO PDF ────────────────────────────────────────────
-async function gerarRelatorioPDF() {
+async function gerarRelatorioPDF(filtros = {}) {
     const btn = DOM.get('btnGerarRelatorio');
     btn.disabled = true;
     btn.textContent = '⏳ Gerando PDF…';
+    const {
+        secoes = {},
+        dataDe = null,
+        dataAte = null,
+        paciente: filtroPaciente = null,
+        medico: filtroMedico = null,
+        medicamento: filtroMedicamento = null,
+    } = filtros;
+    const mostrar = (chave) => secoes[chave] !== false;  // true por padrão se não informado
     try {
-        const [dashboard, pacientes, medicamentos, receitas, voluntarios, fila] = await Promise.all([
+        const [dashboard, pacientes, medicamentos, receitas, voluntarios, fila, filaEntregues] = await Promise.all([
             apiFetch('/relatorios/dashboard'),
             apiFetch('/pacientes'),
             apiFetch('/medicamentos'),
             apiFetch('/receitas'),
             apiFetch('/voluntarios'),
             apiFetch('/fila'),
+            apiFetch('/fila/entregues'),
         ]);
 
         const now = new Date();
@@ -1217,6 +1222,53 @@ async function gerarRelatorioPDF() {
         const faixas = dashboard.pacientesPorFaixaEtaria;
         const totalPac = Object.values(faixas).reduce((a, b) => a + b, 0);
         const vols = (voluntarios || []).filter(v => !v.isAdmin);
+
+        // ── Aplicar filtros ────────────────────────────────────────────
+        const normalizar = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const contemNorm = (texto, filtro) => normalizar(texto).includes(normalizar(filtro));
+
+        // Filtrar receitas por data e texto
+        let receitasFiltradas = receitas || [];
+        if (dataDe) receitasFiltradas = receitasFiltradas.filter(r => r.data && r.data.slice(0,10) >= dataDe);
+        if (dataAte) receitasFiltradas = receitasFiltradas.filter(r => r.data && r.data.slice(0,10) <= dataAte);
+        if (filtroMedico) receitasFiltradas = receitasFiltradas.filter(r => contemNorm(r.medico, filtroMedico));
+        if (filtroMedicamento) receitasFiltradas = receitasFiltradas.filter(r =>
+            (r.itens || []).some(it => contemNorm(it.medicamento?.nomeComercial, filtroMedicamento))
+        );
+        if (filtroPaciente) receitasFiltradas = receitasFiltradas.filter(r => contemNorm(r.paciente?.nome, filtroPaciente));
+
+        // Filtrar pacientes por nome
+        let pacientesFiltrados = pacientes || [];
+        if (filtroPaciente) pacientesFiltrados = pacientesFiltrados.filter(p => contemNorm(p.nome, filtroPaciente));
+
+        // Filtrar medicamentos por nome
+        let medicamentosFiltrados = medicamentos || [];
+        if (filtroMedicamento) medicamentosFiltrados = medicamentosFiltrados.filter(m =>
+            contemNorm(m.nomeComercial, filtroMedicamento) || contemNorm(m.principioAtivo, filtroMedicamento)
+        );
+
+        // Filtrar fila
+        let filaFiltrada = fila || [];
+        if (filtroPaciente) filaFiltrada = filaFiltrada.filter(item => contemNorm(item.receita?.paciente?.nome, filtroPaciente));
+        if (filtroMedico) filaFiltrada = filaFiltrada.filter(item => contemNorm(item.receita?.medico, filtroMedico));
+        if (filtroMedicamento) filaFiltrada = filaFiltrada.filter(item =>
+            (item.receita?.itens || []).some(it => contemNorm(it.medicamento?.nomeComercial, filtroMedicamento))
+        );
+
+        // Filtrar fila entregues
+        let filaEntreguesFiltrada = filaEntregues || [];
+        if (filtroPaciente) filaEntreguesFiltrada = filaEntreguesFiltrada.filter(item => contemNorm(item.receita?.paciente?.nome, filtroPaciente));
+        if (filtroMedico) filaEntreguesFiltrada = filaEntreguesFiltrada.filter(item => contemNorm(item.receita?.medico, filtroMedico));
+        if (filtroMedicamento) filaEntreguesFiltrada = filaEntreguesFiltrada.filter(item =>
+            (item.receita?.itens || []).some(it => contemNorm(it.medicamento?.nomeComercial, filtroMedicamento))
+        );
+
+        // Montar legenda de filtros ativos para o cabeçalho do PDF
+        const filtrosAtivos = [];
+        if (dataDe || dataAte) filtrosAtivos.push(`Periodo: ${dataDe || '...'} ate ${dataAte || '...'}`);
+        if (filtroPaciente) filtrosAtivos.push(`Paciente: "${filtroMedicamento || filtroPaciente}"`);
+        if (filtroMedico) filtrosAtivos.push(`Medico: "${filtroMedico}"`);
+        if (filtroMedicamento) filtrosAtivos.push(`Medicamento: "${filtroMedicamento}"`);
 
         const fmtDate = (raw) => {
             if (!raw) return '—';
@@ -1268,9 +1320,10 @@ async function gerarRelatorioPDF() {
           <div class="cabecalho">
             <h1>Farmacia Comunitaria</h1>
             <p>Relatorio Geral do Sistema</p>
-            <div class="meta">Emitido em ${dataEmissao} as ${horaEmissao} &nbsp;•&nbsp; Por: ${user?.nome ?? 'Usuario'}</div>
+            <div class="meta">Emitido em ${dataEmissao} as ${horaEmissao} &nbsp;•&nbsp; Por: ${user?.nome ?? 'Usuario'}${filtrosAtivos.length ? ' &nbsp;|&nbsp; Filtros: ' + filtrosAtivos.join(' • ') : ''}</div>
           </div>
           <div class="corpo">
+            ${mostrar('resumo') ? `
             <div class="kpis">
               <div class="kpi"><div class="kpi-val">${dashboard.totais.receitas}</div><div class="kpi-label">Receitas Totais</div></div>
               <div class="kpi"><div class="kpi-val">${dashboard.totais.pacientes}</div><div class="kpi-label">Pacientes</div></div>
@@ -1282,53 +1335,63 @@ async function gerarRelatorioPDF() {
               ${alertas.estoqueBaixo > 0 ? `⚠ ${alertas.estoqueBaixo} medicamento(s) com estoque baixo (<=10)` : ''}
               ${alertas.estoqueBaixo > 0 && alertas.voluntariosInativos > 0 ? ' &nbsp;•&nbsp; ' : ''}
               ${alertas.voluntariosInativos > 0 ? `⚠ ${alertas.voluntariosInativos} voluntario(s) sem atividade recente` : ''}
-            </div>` : ''}
+            </div>` : ''}` : ''}
 
-            ${secao('💊', 'Medicamentos Mais Distribuidos',
+            ${mostrar('medsDist') ? secao('💊', 'Medicamentos Mais Distribuidos',
               tableRows(['#', 'Medicamento', 'Qtd. Total Distribuida'],
                 dashboard.medicamentosMaisDistribuidos.map((m, i) => [i + 1, m.medicamento, m.total]))
-            )}
+            ) : ''}
 
-            ${secao('🏥', 'Estoque de Medicamentos',
+            ${mostrar('estoque') ? secao('🏥', 'Estoque de Medicamentos',
               tableRows(
                 ['Nome Comercial', 'Principio Ativo', 'Dosagem', 'Laboratorio', 'Validade', 'Estoque'],
-                medicamentos.map(m => {
+                medicamentosFiltrados.map(m => {
                   const val = m.validade ? m.validade.slice(0,7).split('-').reverse().join('/') : '—';
                   return [m.nomeComercial, m.principioAtivo, m.dosagem, m.laboratorio, val, m.quantidade];
                 }),
                 (row, ci) => ci === 5 && parseInt(row[5]) <= 10
               )
-            )}
+            ) : ''}
 
-            ${secao('👥', 'Pacientes Cadastrados', `
-              ${totalPac > 0 ? `<div class="faixa-etaria">Faixa etaria: ${Object.entries(faixas).map(([k,v]) => `<span>${k} anos: ${v}</span>`).join('')}</div>` : ''}
+            ${mostrar('pacientes') ? secao('👥', 'Pacientes Cadastrados', `
+              ${totalPac > 0 && !filtroPaciente ? `<div class="faixa-etaria">Faixa etaria: ${Object.entries(faixas).map(([k,v]) => `<span>${k} anos: ${v}</span>`).join('')}</div>` : ''}
               ${tableRows(
                 ['Nome', 'CPF', 'Telefone', 'Nasc.', 'Endereco'],
-                pacientes.map(p => [p.nome, p.cpf, p.telefone, fmtDate(p.dataNasc), p.endereco])
-              )}`
-            )}
+                pacientesFiltrados.map(p => [p.nome, p.cpf, p.telefone, fmtDate(p.dataNasc), p.endereco])
+              )}`) : ''}
 
-            ${secao('📋', 'Receitas Cadastradas',
+            ${mostrar('receitas') ? secao('📋', 'Receitas Cadastradas',
               tableRows(
                 ['Data', 'Medico', 'Paciente', 'Medicamentos', 'Voluntario'],
-                receitas.map(r => [
+                receitasFiltradas.map(r => [
                   fmtDate(r.data), r.medico, r.paciente?.nome ?? '—',
                   (r.itens || []).map(it => `${it.medicamento.nomeComercial} x${it.quantidade}`).join(', '),
                   r.voluntario?.nome ?? '—'
                 ])
               )
-            )}
+            ) : ''}
 
-            ${vols.length ? secao('🙋', 'Voluntarios',
+            ${mostrar('voluntarios') && vols.length ? secao('🙋', 'Voluntarios',
               tableRows(['Nome', 'CPF', 'Telefone', 'Data de Nasc.'],
                 vols.map(v => [v.nome, v.cpf, v.telefone, fmtDate(v.dataNasc)])
               )
             ) : ''}
 
-            ${fila.length ? secao('🕐', 'Fila de Entrega (Pendentes)',
+            ${mostrar('fila') && filaFiltrada.length ? secao('🕐', 'Fila de Entrega (Pendentes)',
               tableRows(
                 ['#', 'Paciente', 'Medico', 'Voluntario', 'Medicamentos'],
-                fila.map((item, i) => {
+                filaFiltrada.map((item, i) => {
+                  const r = item.receita;
+                  return [i + 1, r.paciente?.nome ?? '—', r.medico, r.voluntario?.nome ?? '—',
+                    (r.itens || []).map(it => `${it.medicamento.nomeComercial} x${it.quantidade}`).join(', ')];
+                })
+              )
+            ) : ''}
+
+            ${mostrar('filaEntregues') && filaEntreguesFiltrada.length ? secao('✅', 'Fila de Entrega (Entregues)',
+              tableRows(
+                ['#', 'Paciente', 'Medico', 'Voluntario', 'Medicamentos'],
+                filaEntreguesFiltrada.map((item, i) => {
                   const r = item.receita;
                   return [i + 1, r.paciente?.nome ?? '—', r.medico, r.voluntario?.nome ?? '—',
                     (r.itens || []).map(it => `${it.medicamento.nomeComercial} x${it.quantidade}`).join(', ')];
@@ -1452,7 +1515,89 @@ class App {
             DOM.get('menuVoluntarios').style.display = '';
         }
         DOM.get('btnLogout').addEventListener('click', logout);
-        DOM.get('btnGerarRelatorio').addEventListener('click', gerarRelatorioPDF);
+        // Modal de relatório
+        const relModal = DOM.get('relatorioModal');
+        const popularSelectsRelatorio = async () => {
+            try {
+                const [pacientes, receitas, medicamentos] = await Promise.all([
+                    apiFetch('/pacientes'),
+                    apiFetch('/receitas'),
+                    apiFetch('/medicamentos'),
+                ]);
+
+                // Pacientes
+                const selPac = DOM.get('relFiltroPaciente');
+                selPac.innerHTML = '<option value="">Todos os pacientes</option>';
+                [...pacientes].sort((a, b) => a.nome.localeCompare(b.nome)).forEach(p => {
+                    const o = document.createElement('option');
+                    o.value = p.nome;
+                    o.textContent = p.nome;
+                    selPac.appendChild(o);
+                });
+
+                // Médicos (extraídos das receitas, únicos)
+                const selMed = DOM.get('relFiltroMedico');
+                selMed.innerHTML = '<option value="">Todos os médicos</option>';
+                const medicos = [...new Set((receitas || []).map(r => r.medico).filter(Boolean))].sort();
+                medicos.forEach(m => {
+                    const o = document.createElement('option');
+                    o.value = m;
+                    o.textContent = m;
+                    selMed.appendChild(o);
+                });
+
+                // Medicamentos
+                const selMedicamento = DOM.get('relFiltroMedicamento');
+                selMedicamento.innerHTML = '<option value="">Todos os medicamentos</option>';
+                [...medicamentos].sort((a, b) => a.nomeComercial.localeCompare(b.nomeComercial)).forEach(m => {
+                    const o = document.createElement('option');
+                    o.value = m.nomeComercial;
+                    o.textContent = `${m.nomeComercial} ${m.dosagem}`;
+                    selMedicamento.appendChild(o);
+                });
+            } catch (e) {
+                console.warn('Erro ao popular selects do relatório:', e);
+            }
+        };
+
+        DOM.get('btnAbrirModalRelatorio').addEventListener('click', async () => {
+            await popularSelectsRelatorio();
+            relModal.classList.add('open');
+        });
+        DOM.get('btnFecharModalRelatorio').addEventListener('click', () => {
+            relModal.classList.remove('open');
+        });
+        relModal.addEventListener('click', (e) => {
+            if (e.target === relModal) relModal.classList.remove('open');
+        });
+        // Checkboxes com toggle visual
+        relModal.querySelectorAll('.rel-check-item').forEach(label => {
+            const cb = label.querySelector('input[type="checkbox"]');
+            cb.addEventListener('change', () => {
+                label.classList.toggle('checked', cb.checked);
+            });
+        });
+        DOM.get('btnGerarRelatorio').addEventListener('click', () => {
+            const filtros = {
+                secoes: {
+                    resumo:      DOM.get('chkResumo').checked,
+                    medsDist:    DOM.get('chkMedsDist').checked,
+                    estoque:     DOM.get('chkEstoque').checked,
+                    pacientes:   DOM.get('chkPacientes').checked,
+                    receitas:    DOM.get('chkReceitas').checked,
+                    voluntarios: DOM.get('chkVoluntarios').checked,
+                    fila:        DOM.get('chkFila').checked,
+                    filaEntregues: DOM.get('chkFilaEntregues').checked,
+                },
+                dataDe:      DOM.get('relDataDe').value || null,
+                dataAte:     DOM.get('relDataAte').value || null,
+                paciente:    DOM.get('relFiltroPaciente').value || null,
+                medico:      DOM.get('relFiltroMedico').value || null,
+                medicamento: DOM.get('relFiltroMedicamento').value || null,
+            };
+            relModal.classList.remove('open');
+            gerarRelatorioPDF(filtros);
+        });
         this.deleteModal = new DeleteModal();
         this.receitasManager = new ReceitasManager();
         this.pacientesManager = new PacientesManager();
